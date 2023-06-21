@@ -3,6 +3,7 @@ package math
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"strconv"
 )
 
@@ -24,4 +25,8 @@ func If(condition bool, trueVal, falseVal interface{}) interface{} {
 
 func Sigmoid(x float64) float64 {
 	return 1 / (1 + math.Pow(math.E, -x))
+}
+
+func RandFloat64(a float64, b float64) float64 {
+	return rand.Float64()*(b-a) + a
 }
