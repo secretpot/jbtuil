@@ -1,6 +1,9 @@
 package encrypt
 
 import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -48,4 +51,32 @@ func RSADecrypt(cipherText []byte, privateKeyContent []byte) ([]byte, error) {
 	}
 	//返回明文
 	return plainText, nil
+}
+
+func AESEncrypt(plainText []byte, secretKey []byte) ([]byte, error) {
+	block, err := aes.NewCipher(secretKey)
+	if err != nil {
+		return []byte{}, err
+	}
+	blockSize := block.BlockSize() // 获取秘钥块的长度
+	padding := blockSize - len(plainText)%blockSize
+	padcipher := append(plainText, bytes.Repeat([]byte{byte(padding)}, padding)...) // 补全码
+	blockMode := cipher.NewCBCEncrypter(block, secretKey[:blockSize])               // 加密模式
+	cipherText := make([]byte, len(padcipher))                                      // 创建数组
+	blockMode.CryptBlocks(cipherText, padcipher)                                    // 加密
+	return cipherText, nil
+}
+
+func AESDecrypt(cipherText []byte, secretKey []byte) ([]byte, error) {
+	block, err := aes.NewCipher(secretKey)
+	if err != nil {
+		return []byte{}, err
+	}
+	blockSize := block.BlockSize()                                    // 获取秘钥块的长度
+	blockMode := cipher.NewCBCDecrypter(block, secretKey[:blockSize]) // 加密模式
+	plainText := make([]byte, len(cipherText))                        // 创建数组
+	blockMode.CryptBlocks(plainText, cipherText)                      // 解密
+	plainLen := len(plainText)
+	unpadding := int(plainText[plainLen-1])
+	return plainText[:(plainLen - unpadding)], nil // 去除补全码
 }
