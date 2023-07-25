@@ -7,16 +7,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/pem"
 )
-
-func Base64(plainText []byte) []byte {
-	return []byte(base64.StdEncoding.EncodeToString(plainText))
-}
-func Debase64(cipherText []byte) ([]byte, error) {
-	return base64.StdEncoding.DecodeString(string(cipherText))
-}
 
 func RSAEncrypt(plainText []byte, publicKeyContent []byte) ([]byte, error) {
 	//pem解码
