@@ -11,6 +11,8 @@ import (
 
 type SubProcess struct {
 	name     string
+	path     string
+	args     []string
 	pid      int
 	executor *exec.Cmd
 	lock     *sync.Mutex
@@ -20,6 +22,8 @@ type SubProcess struct {
 func Spwan(name string, cmd string, params ...string) *SubProcess {
 	proc := &SubProcess{
 		name:     name,
+		path:     cmd,
+		args:     params,
 		pid:      -1,
 		executor: exec.Command(cmd, params...),
 		lock:     new(sync.Mutex),
@@ -31,19 +35,21 @@ func (s *SubProcess) Name() string {
 	return s.name
 }
 func (s *SubProcess) Command() string {
-	return s.executor.Path
+	return s.path
 }
 func (s *SubProcess) Args() []string {
-	return s.executor.Args
-}
-func (s *SubProcess) Env() []string {
-	return s.executor.Env
+	return s.args
 }
 func (s *SubProcess) PID() int {
 	return s.pid
 }
 func (s *SubProcess) Process() *os.Process {
-	return s.executor.Process
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if s.executor != nil {
+		return s.executor.Process
+	}
+	return nil
 }
 func (s *SubProcess) IsAlive() bool {
 	s.lock.Lock()
@@ -70,12 +76,13 @@ func (s *SubProcess) listenError() {
 func (s *SubProcess) ensureProcess() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if s.pid != -1 && s.pid > 0 {
+	if s.executor != nil && s.pid != -1 && s.pid > 0 {
 		return fmt.Errorf("subprocess has already started")
 	}
 	if s.executor == nil {
 		s.executor = exec.Command(s.Command(), s.Args()...)
 		s.pid = -1
+		s.exerr = nil
 	}
 	return nil
 }
@@ -99,12 +106,12 @@ func (s *SubProcess) Kill() error {
 	// 考虑并发场景, 用锁保证一个SubProcess只能被杀死一次
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	s.pid = -1
 	if s.executor == nil {
 		return fmt.Errorf("subprocess has been killed or not started")
 	}
 	err := s.executor.Process.Kill()
 	s.executor = nil
-	s.pid = -1
 	return err
 }
 
