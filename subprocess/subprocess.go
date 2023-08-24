@@ -66,8 +66,8 @@ func (s *SubProcess) listenError() {
 	s.executor = nil
 	s.pid = -1
 }
-func (s *SubProcess) Start() error {
-	// 考虑并发场景, 用锁保证一个SubProcess只能被启动一次
+
+func (s *SubProcess) ensureProcess() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if s.pid != -1 && s.pid > 0 {
@@ -75,7 +75,18 @@ func (s *SubProcess) Start() error {
 	}
 	if s.executor == nil {
 		s.executor = exec.Command(s.Command(), s.Args()...)
+		s.pid = -1
 	}
+	return nil
+}
+
+func (s *SubProcess) Start() error {
+	// 考虑并发场景, 用锁保证一个SubProcess只能被启动一次
+	if err := s.ensureProcess(); err != nil {
+		return err
+	}
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	err := s.executor.Start()
 	if err == nil {
 		s.pid = s.executor.Process.Pid
@@ -113,6 +124,9 @@ func (s *SubProcess) CopyOutput(r io.Reader, wf func(*SubProcess, string)) {
 	}()
 }
 func (s *SubProcess) CopyStdout(wf func(*SubProcess, string)) error {
+	if err := s.ensureProcess(); err != nil {
+		return err
+	}
 	if stdout, err := s.StdoutPipe(); err != nil {
 		return err
 	} else {
@@ -121,6 +135,9 @@ func (s *SubProcess) CopyStdout(wf func(*SubProcess, string)) error {
 	}
 }
 func (s *SubProcess) CopyStderr(wf func(*SubProcess, string)) error {
+	if err := s.ensureProcess(); err != nil {
+		return err
+	}
 	if stderr, err := s.StderrPipe(); err != nil {
 		return err
 	} else {
