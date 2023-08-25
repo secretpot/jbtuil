@@ -62,10 +62,12 @@ func (s *SubProcess) IsExitByErr() bool {
 	return (s.pid <= 0 || s.executor == nil) && s.exerr != nil
 }
 
-func (s *SubProcess) listenExit(listener func(error)) {
+func (s *SubProcess) listenExit(listener func(int, error)) {
 	// 协程监听导致SubProcess结束的运行错误, Wait表明进程已被杀死, 获取其错误即可
 	ec := s.executor.Wait()
+	pid := -1
 	s.lock.Lock()
+	pid = s.pid
 	s.exerr = ec
 	s.executor = nil
 	s.pid = -1
@@ -74,7 +76,7 @@ func (s *SubProcess) listenExit(listener func(error)) {
 	// 因此通过监听函数立刻获得该错误, 而不需要再开启协程读取对象的IsExitByErr
 	// 此外, 也能更清楚地知悉退出原因
 	if listener != nil {
-		listener(ec)
+		listener(pid, ec)
 	}
 }
 
@@ -92,7 +94,7 @@ func (s *SubProcess) ensureProcess() error {
 	return nil
 }
 
-func (s *SubProcess) StartWithExitListener(listener func(error)) error {
+func (s *SubProcess) StartWithExitListener(listener func(int, error)) error {
 	// 考虑并发场景, 用锁保证一个SubProcess只能被启动一次
 	if err := s.ensureProcess(); err != nil {
 		return err
