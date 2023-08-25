@@ -10,24 +10,26 @@ import (
 )
 
 type SubProcess struct {
-	name     string
-	path     string
-	args     []string
-	pid      int
-	executor *exec.Cmd
-	lock     *sync.Mutex
-	exerr    error
+	name      string
+	path      string
+	args      []string
+	pid       int
+	executor  *exec.Cmd
+	lock      *sync.Mutex
+	exerr     error
+	listeners []func(int, error)
 }
 
 func Spwan(name string, cmd string, params ...string) *SubProcess {
 	proc := &SubProcess{
-		name:     name,
-		path:     cmd,
-		args:     params,
-		pid:      -1,
-		executor: exec.Command(cmd, params...),
-		lock:     new(sync.Mutex),
-		exerr:    nil,
+		name:      name,
+		path:      cmd,
+		args:      params,
+		pid:       -1,
+		executor:  exec.Command(cmd, params...),
+		lock:      new(sync.Mutex),
+		exerr:     nil,
+		listeners: []func(int, error){},
 	}
 	return proc
 }
@@ -62,21 +64,24 @@ func (s *SubProcess) IsExitByErr() bool {
 	return (s.pid <= 0 || s.executor == nil) && s.exerr != nil
 }
 
-func (s *SubProcess) listenExit(listener func(int, error)) {
+func (s *SubProcess) listenExit() {
+	// 该函数只会被Start以子协程的方式调用
 	// 协程监听导致SubProcess结束的运行错误, Wait表明进程已被杀死, 获取其错误即可
-	ec := s.executor.Wait()
+	err := s.executor.Wait()
 	pid := -1
 	s.lock.Lock()
 	pid = s.pid
-	s.exerr = ec
+	s.exerr = err
 	s.executor = nil
 	s.pid = -1
 	s.lock.Unlock()
 	// 将错误传递给监听器函数,
 	// 因此通过监听函数立刻获得该错误, 而不需要再开启协程读取对象的IsExitByErr
 	// 此外, 也能更清楚地知悉退出原因
-	if listener != nil {
-		listener(pid, ec)
+	for _, listener := range s.listeners {
+		if listener != nil {
+			go listener(pid, err)
+		}
 	}
 }
 
@@ -94,7 +99,7 @@ func (s *SubProcess) ensureProcess() error {
 	return nil
 }
 
-func (s *SubProcess) StartWithExitListener(listener func(int, error)) error {
+func (s *SubProcess) Start() error {
 	// 考虑并发场景, 用锁保证一个SubProcess只能被启动一次
 	if err := s.ensureProcess(); err != nil {
 		return err
@@ -105,11 +110,8 @@ func (s *SubProcess) StartWithExitListener(listener func(int, error)) error {
 	if err == nil {
 		s.pid = s.executor.Process.Pid
 	}
-	go s.listenExit(listener)
+	go s.listenExit()
 	return err
-}
-func (s *SubProcess) Start() error {
-	return s.StartWithExitListener(nil)
 }
 
 func (s *SubProcess) Kill() error {
@@ -160,5 +162,16 @@ func (s *SubProcess) CopyStderr(wf func(*SubProcess, string)) error {
 	} else {
 		s.CopyOutput(stderr, wf)
 		return nil
+	}
+}
+func (s *SubProcess) CopyExiterr(lf func(int, error)) error {
+	if err := s.ensureProcess(); err != nil {
+		return err
+	}
+	if lf != nil {
+		s.listeners = append(s.listeners, lf)
+		return nil
+	} else {
+		return fmt.Errorf("empty pointer of listener func")
 	}
 }
